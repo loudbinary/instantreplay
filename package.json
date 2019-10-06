@@ -15,6 +15,7 @@
     "express": "^4.17.1",
     "find-process": "^1.4.2",
     "get-video-duration": "^1.0.3",
-    "intelli-timer": "^1.1.2"
+    "intelli-timer": "^1.1.2",
+    "lodash": "^4.17.15"
   }
 }

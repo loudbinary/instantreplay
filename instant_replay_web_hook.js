@@ -10,7 +10,7 @@ const { spawn } = require('child_process');
 const findProcess = require('find-process')
 const { execSync } = require('child_process');
 let videoDuration = require('get-video-duration').getVideoDurationInSeconds
-
+const _ = require('lodash')
 let vlcExecutablePath = "c:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
 
 /**
@@ -57,7 +57,8 @@ function launchVideo(videoPath) {
 class InstantReplay {
   constructor(params) {
     params = params | {}
-    let _videoPath = params.videoPath || "C:/Users/Loudbinary/Videos/replays" 
+    let _videoPath = params.videoPath || "C:/Users/Loudbinary/Videos/replays"
+    let _userPath = params.userPath || "C:/Users/Loudbinary/Videos/user_replays"
     let watcher = chokidar.watch("Replay*",{
       cwd: _videoPath,
       alwaysStat: true,
@@ -78,9 +79,21 @@ class InstantReplay {
       atomic: true // or a custom 'atomicity delay', in milliseconds (default 100)
     });
 
+    function getMostRecentFileName(dir) {
+      var files = fs.readdirSync(dir);
+    
+      // use underscore for max()
+      return _.max(files, function (f) {
+          var fullpath = path.join(dir, f);
+    
+          // ctime = creation time is used
+          // replace with mtime for modification time
+          return fs.statSync(fullpath).name;
+      });
+    }
     
     this.videoPath = _videoPath
-    
+    this.userPath = _userPath
     var wait = ms => new Promise((r, j)=>setTimeout(r, ms))
     let start = function (videoPath) {
       let savedVideosPath = this.videoPath
@@ -128,6 +141,19 @@ class InstantReplay {
         console.log('Took snap shot')
         res.send("OK")
       }
+
+      // Return only base file name without dir
+
+
+      let takeInstantReplayAndRename = (res,id) =>{
+        takeInstantReplay(res)
+        wait(1)
+        let recent = getMostRecentFileName(videoPath)
+        //let filename = path.basename(videoPath)
+        let currentVideoPath = path.join(this.videoPath,recent)
+        let userCopyPath = path.join(this.userPath,id + '.mp4')
+        fs.copyFileSync(currentVideoPath,userCopyPath)
+      }
       
       // Tell express to use the body-parser middleware and to not parse extended bodies
       app.use(bodyParser.urlencoded({ extended: false }))
@@ -137,9 +163,13 @@ class InstantReplay {
         console.log('GET')
         const body = req.body.Body
         let start = req.query.start
+        let id = req.query.id
 
-        if (start==1) {
+        if (start==1 && typeof(id)=='undefined') {
           return takeInstantReplay(res)
+        } else if (start==1 && typeof(id)!='undefined') {
+          console.log('User requests their uniquely named replay, for pick up later.')
+          return takeInstantReplayAndRename(res,id)
         } else {
           res.send("Missing query string '?start=1'")
         }
