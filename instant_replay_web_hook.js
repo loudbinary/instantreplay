@@ -158,7 +158,21 @@ class InstantReplay {
       // Tell express to use the body-parser middleware and to not parse extended bodies
       app.use(bodyParser.urlencoded({ extended: false }))
 
-
+      app.get('/download', function(req,res){
+        let id = req.query.id
+        let fullPath = path.join(_userPath,id +'.mp4')
+        if (fs.existsSync(fullPath)){
+          // 'Content-Description: File Transfer'
+          // 'Content-Type: application/force-download'
+          // 'Content-Disposition: attachment; filename="myfile.mp4"
+          res.set('Content-Description', 'File Transfer')
+          res.set('Content-Type', 'application/force-download')
+          res.set('Content-Disposition', 'attachment; filename=\"'+ id + '.mp4' + '\"')
+          res.sendFile(fullPath)
+        } else {
+          res.send('Missing file' + id)
+        }
+      })
       app.get('/instantreplay', function (req, res) {
         console.log('GET')
         const body = req.body.Body
