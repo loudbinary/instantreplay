@@ -7,26 +7,49 @@ const app = express()
 app.use(bodyParser.json());
 const path = require('path')
 const { spawn } = require('child_process');
+const findProcess = require('find-process')
+const { execSync } = require('child_process');
+let videoDuration = require('get-video-duration').getVideoDurationInSeconds
 
 let vlcExecutablePath = "c:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
-let killVideoPlayerAfterXSeconds = 75
-function launchVideo(videoPath) {
 
+/**
+ * Used to see if VLC is still running, user may have closed and attempting
+ * to kill it agai will crash app.
+ * @param {*} pid 
+ */
+let vlcHasBeenClosed = function(pid){
+  let results = execSync(`tasklist /fi "pid eq ${pid}"`).toString()
+  if (results.indexOf("No tasks") == 6){
+    return false
+  } 
+  else {
+    return true
+  }
+}
+
+/**
+ * Rather than statically setting, or managing timeout value for videos we reaad the file and get its duration
+ * Then add 5 seconds.
+ * @param {*} fullpath 
+ */
+function getVideoLength(fullpath) {
+  return videoDuration(fullpath).then((duration) => {
+    let videoLength = Math.ceil(duration) + 5
+    console.log('Video length is:', videoLength, 'seconds, closing VLC then at that time.')
+    return videoLength
+  })
+}
+
+
+function launchVideo(videoPath) {
   const vlcProcess = spawn(vlcExecutablePath, [videoPath], {
     detached: true,
     stdio: 'ignore'
   });
 
   vlcProcess.unref();
-
-  let killVideoPlayAfterPause = function() {
-    setTimeout(() => {
-      console.log('Killing vlc pid:', vlcProcess.pid)
-      process.kill(vlcProcess.pid)
-    }, killVideoPlayerAfterXSeconds * 1000);
-  }
-  console.log('Waiting', killVideoPlayerAfterXSeconds,'seconds, VLC PID:', vlcProcess.pid)
-  killVideoPlayAfterPause();
+  return vlcProcess.pid
 }
 
 
@@ -58,6 +81,7 @@ class InstantReplay {
     
     this.videoPath = _videoPath
     
+    var wait = ms => new Promise((r, j)=>setTimeout(r, ms))
     let start = function (videoPath) {
       let savedVideosPath = this.videoPath
       // Something to use when events are received.
@@ -68,23 +92,26 @@ class InstantReplay {
           let fullVideoPath = path.join(savedVideosPath,newVideoPath)
           log(`File ${fullVideoPath} has been added`)
           log('Launching vlc to view video')
-          launchVideo(fullVideoPath)
+          let pid = launchVideo(fullVideoPath)
+          getVideoLength(fullVideoPath)
+            .then((runningVideoLength) =>{
+              var waitTill = new Date(new Date().getTime() + runningVideoLength * 1000);
+              console.log('Waiting', runningVideoLength,'seconds, VLC PID:', pid)
+              while(waitTill > new Date()){}
+              let results = vlcHasBeenClosed(pid)
+              if(results == true) {
+                console.log(runningVideoLength, 'seconds have passed, Killing vlc pid:', pid)
+                process.kill(pid)
+              } else {
+                console.log('VLC was closed by user, continuing')
+              }
+              
+            })
         })
-        //.on('change', path => log(`File ${path} has been changed`))
-        //.on('unlink', path => log(`File ${path} has been removed`));
-      
-      // More possible events.
       watcher
-        //.on('addDir', path => log(`Directory ${path} has been added`))
-        //.on('unlinkDir', path => log(`Directory ${path} has been removed`))
         .on('error', error => log(`Watcher error: ${error}`))
         .on('ready', () => log('Initial scan complete. Ready for changes'))
-        //.on('raw', (event, path, details) => { // internal
-        //  log('Raw event info:', event, path, details);
-        //});
-      
-      
-       // So we listen on ip other than home.
+
       app.listen(3000, '0.0.0.0', function (err) {
         let port = process.env.PORT || 3000
         if (err) {
